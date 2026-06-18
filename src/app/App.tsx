@@ -1012,8 +1012,8 @@ export default function App() {
   // ── MAINTENANCE: MAP ─────────────────────────────────────────────────────────
   function renderWorkerMap() {
     return (
-      <div className="relative" style={{ height: "800px" }}>
-        <svg width="390" height="800" viewBox="0 0 390 800" className="absolute inset-0">
+      <div className="relative" style={{ height: "calc(100dvh - 80px)" }}>
+        <svg viewBox="0 0 390 800" className="absolute inset-0">
           <rect width="390" height="800" fill="#CBD5E1" />
           <rect x="0" y="155" width="390" height="26" fill="#F9FAFB" />
           <rect x="0" y="335" width="390" height="26" fill="#F9FAFB" />
