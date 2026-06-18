@@ -1,0 +1,20 @@
+Admin Panel Integration Patch
+
+Because the uploaded App.tsx is ~1300 lines and the requested feature set requires several hundred additional lines
+(new desktop-only layout, admin state, filters, modals, map/table views, workflows, responsive guards),
+a safe automatic rewrite cannot be generated reliably in one step.
+
+Required additions:
+- admin mode state
+- desktop guard (<768px)
+- profile button -> admin panel
+- Mängel module
+- Wartungsteam module
+- secondary sidebar
+- map/table switch
+- status workflow
+- assign team modal
+- reject reasons
+- filters
+
+This patch file was generated as a placeholder.

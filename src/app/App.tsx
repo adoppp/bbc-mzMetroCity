@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Home, Train, AlertTriangle, User, Bell, Star, MapPin,
   Clock, Users, CheckCircle, Mail, Camera, ArrowLeft,
@@ -13,6 +13,25 @@ type HomeScreen = "dashboard" | "ticketDetail" | "allTickets" | "notifications" 
 type MobilityScreen = "hub" | "ticketForm" | "payment" | "success" | "carpooling" | "offerRide" | "offerSuccess";
 type ReportScreen = "form" | "success";
 type WorkerScreen = "map" | "jobDetail" | "jobComplete";
+type DefectStatus = "new" | "approved" | "pending" | "in-progress" | "rejected" | "completed";
+type AdminTab = "defects" | "team";
+type AdminFilter = "all" | DefectStatus;
+type AdminView = "map" | "table";
+
+interface DefectItem {
+  id: number;
+  x: number;
+  y: number;
+  status: DefectStatus;
+  label: string;
+  address: string;
+  priority: string;
+  category: string;
+  reporter: string;
+  time: string;
+  team: string;
+  detail: string;
+}
 
 // ─── Static Data ──────────────────────────────────────────────────────────────
 const TICKETS = [
@@ -37,12 +56,22 @@ const RIDES = [
   { id: 4, driver: "Lisa W.", avatar: "LW", rating: 4.3, reviews: 9, from: "Zürich HB", to: "Winterthur", time: "09:15", seats: 2, price: 7 },
 ];
 
-const DEFECTS = [
-  { id: 1, x: 148, y: 185, status: "new" as const, label: "Strassenlampe defekt", address: "Hauptstrasse 47" },
-  { id: 2, x: 245, y: 255, status: "pending" as const, label: "Schlagloch Hauptstr.", address: "Hauptstrasse 12" },
-  { id: 3, x: 88, y: 315, status: "new" as const, label: "Ampel ausgefallen", address: "Bahnhofplatz 3" },
-  { id: 4, x: 282, y: 158, status: "pending" as const, label: "Vandalismusschaden", address: "Kirchgasse 8" },
-  { id: 5, x: 198, y: 375, status: "new" as const, label: "Kanaldeckel locker", address: "Parkweg 15" },
+const DEFECTS: DefectItem[] = [
+  { id: 1, x: 148, y: 185, status: "new", label: "Strassenlampe defekt", address: "Hauptstrasse 47", priority: "hoch", category: "Beleuchtung", reporter: "Anna Müller", time: "Heute, 06:45", team: "Noch nicht zugewiesen", detail: "Leuchtmittel defekt. Bereich ist schlecht sichtbar, besonders in der Abenddämmerung." },
+  { id: 2, x: 245, y: 255, status: "pending", label: "Schlagloch Hauptstr.", address: "Hauptstrasse 12", priority: "mittel", category: "Strasse", reporter: "Marco B.", time: "Heute, 08:10", team: "Team 2", detail: "Schlagloch ca. 30 cm Durchmesser, 8 cm tief. Verkehrssicherheit eingeschränkt." },
+  { id: 3, x: 88, y: 315, status: "in-progress", label: "Ampel ausgefallen", address: "Bahnhofplatz 3", priority: "hoch", category: "Verkehrssteuerung", reporter: "Lisa W.", time: "Heute, 09:20", team: "Team 1", detail: "Ampelsteuerung reagiert nicht auf Signalwechsel. Sperrung erforderlich." },
+  { id: 4, x: 282, y: 158, status: "approved", label: "Vandalismusschaden", address: "Kirchgasse 8", priority: "niedrig", category: "Sicherheit", reporter: "Thomas M.", time: "Gestern, 18:30", team: "Noch nicht zugewiesen", detail: "Glasscheibe beschädigt. Kleinerer Schaden, aber sofortige Sicherung sinnvoll." },
+  { id: 5, x: 198, y: 375, status: "rejected", label: "Kanaldeckel locker", address: "Parkweg 15", priority: "mittel", category: "Infrastruktur", reporter: "Sabrina K.", time: "Gestern, 21:05", team: "-", detail: "Kanaldeckel war nur kurz gelockert; Meldung wurde als nicht relevant eingestuft." },
+  { id: 6, x: 150, y: 445, status: "completed", label: "Bodenplatte gesichert", address: "Parkweg 22", priority: "niedrig", category: "Sicherheit", reporter: "Nora R.", time: "Gestern, 14:00", team: "Team 3", detail: "Arbeitsbereich wurde abgesichert und abgeschlossen." },
+];
+
+const REJECTION_REASONS = [
+  "spam",
+  "scam",
+  "bot",
+  "not a real accident",
+  "duplicate report",
+  "insufficient details",
 ];
 
 const QR_PATTERN = [
@@ -92,6 +121,28 @@ function StarRow({ rating, size = 12 }: { rating: number; size?: number }) {
   );
 }
 
+function getStatusLabel(status: DefectStatus) {
+  switch (status) {
+    case "new": return "Neu";
+    case "approved": return "Angenommen";
+    case "pending": return "Wartet";
+    case "in-progress": return "In Bearbeitung";
+    case "rejected": return "Abgelehnt";
+    case "completed": return "Erledigt";
+  }
+}
+
+function getStatusPillClass(status: DefectStatus) {
+  switch (status) {
+    case "new": return "bg-red-50 text-red-600";
+    case "approved": return "bg-blue-50 text-blue-600";
+    case "pending": return "bg-amber-50 text-amber-700";
+    case "in-progress": return "bg-emerald-50 text-emerald-600";
+    case "rejected": return "bg-slate-100 text-slate-600";
+    case "completed": return "bg-green-50 text-green-700";
+  }
+}
+
 // ─── App ──────────────────────────────────────────────────────────────────────
 export default function App() {
   // Navigation state
@@ -117,24 +168,148 @@ export default function App() {
 
   // Worker state
   const [photoUploaded, setPhotoUploaded] = useState(false);
+  const [workerTaskId, setWorkerTaskId] = useState<number | null>(null);
 
   // Profile tab
   const [profileTab, setProfileTab] = useState<"account" | "reviews">("account");
+
+  // Admin panel state
+  const [defects, setDefects] = useState<DefectItem[]>(DEFECTS);
+  const [adminMode, setAdminMode] = useState(false);
+  const [adminTab, setAdminTab] = useState<AdminTab>("defects");
+  const [adminView, setAdminView] = useState<AdminView>("map");
+  const [adminFilter, setAdminFilter] = useState<AdminFilter>("all");
+  const [adminSearch, setAdminSearch] = useState("");
+  const [selectedAdminDefectId, setSelectedAdminDefectId] = useState<number | null>(null);
+  const [rejectionReason, setRejectionReason] = useState(REJECTION_REASONS[0]);
+  const [isDesktop, setIsDesktop] = useState(() =>
+    typeof window !== "undefined" ? window.innerWidth >= 768 : false
+  );
+  const [successNotice, setSuccessNotice] = useState<string | null>(null);
 
   // Derived
   const totalPrice = (12 * persons).toFixed(2);
   const selectedRide = RIDES.find((r) => r.id === carpoolModalId);
   const selectedTicket = TICKETS.find((t) => t.id === selectedTicketId);
   const selectedNotif = NOTIFICATIONS.find((n) => n.id === selectedNotifId);
-  const selectedDefect = DEFECTS.find((d) => d.id === selectedPinId);
+  const selectedDefect = defects.find((d) => d.id === selectedPinId);
+  const selectedAdminDefect = defects.find((d) => d.id === selectedAdminDefectId);
+  const workerActiveTask = defects.find((d) => d.id === workerTaskId);
   const unreadCount = NOTIFICATIONS.filter((n) => !n.read).length;
   const activeTickets = TICKETS.filter((t) => t.active);
+  const openWorkerTasks = defects.filter((d) => d.status === "new" || d.status === "pending" || d.status === "approved").length;
+  const activeWorkerAssignments = defects.filter((d) => d.status === "in-progress").length;
+  const filteredDefects = defects.filter((d) => {
+    const matchesFilter = adminFilter === "all" || d.status === adminFilter;
+    const query = adminSearch.toLowerCase();
+    const matchesSearch = !query || `${d.label} ${d.address} ${d.category}`.toLowerCase().includes(query);
+    return matchesFilter && matchesSearch;
+  });
+  const adminCounts = {
+    all: defects.length,
+    new: defects.filter((d) => d.status === "new").length,
+    approved: defects.filter((d) => d.status === "approved").length,
+    pending: defects.filter((d) => d.status === "pending").length,
+    "in-progress": defects.filter((d) => d.status === "in-progress").length,
+    rejected: defects.filter((d) => d.status === "rejected").length,
+    completed: defects.filter((d) => d.status === "completed").length,
+  };
+
+  useEffect(() => {
+    function handleResize() {
+      setIsDesktop(window.innerWidth >= 768);
+    }
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  useEffect(() => {
+    if (selectedAdminDefectId && filteredDefects.some((d) => d.id === selectedAdminDefectId)) {
+      return;
+    }
+    setSelectedAdminDefectId(filteredDefects[0]?.id ?? null);
+  }, [filteredDefects, selectedAdminDefectId]);
 
   function goToTab(tab: CitizenTab) {
     setCitizenTab(tab);
     setHomeScreen("dashboard");
     setMobilityScreen("hub");
     setReportScreen("form");
+    if (tab !== "profile") {
+      setAdminMode(false);
+      setSelectedAdminDefectId(null);
+    }
+  }
+
+  function openAdminPanel() {
+    setAdminMode(true);
+    setAdminTab("defects");
+    setAdminFilter("all");
+    setSelectedAdminDefectId(null);
+    setSuccessNotice(null);
+  }
+
+  function updateDefectStatus(id: number, status: DefectStatus, reason?: string) {
+    setDefects((current) =>
+      current.map((d) =>
+        d.id === id
+          ? {
+              ...d,
+              status,
+              team: status === "pending" || status === "in-progress" ? "Team 2" : d.team,
+            }
+          : d
+      )
+    );
+    setSelectedAdminDefectId(id);
+    if (status === "pending") {
+      setSuccessNotice("Anfrage wurde angenommen und dem Wartungsteam zugewiesen.");
+    }
+    if (status === "in-progress") {
+      setSuccessNotice("Der Auftrag ist jetzt in Bearbeitung.");
+    }
+    if (status === "rejected" && reason) {
+      setSuccessNotice(`Anfrage wurde abgelehnt (${reason}).`);
+    }
+  }
+
+  function acceptWorkerTask(id: number) {
+    if (workerTaskId !== null && workerTaskId !== id) {
+      return;
+    }
+    setDefects((current) =>
+      current.map((d) =>
+        d.id === id
+          ? {
+              ...d,
+              status: "in-progress",
+              team: "Mein Team",
+            }
+          : d
+      )
+    );
+    setWorkerTaskId(id);
+    setSelectedPinId(id);
+    setWorkerScreen("jobDetail");
+  }
+
+  function completeWorkerTask() {
+    if (!workerTaskId) return;
+    setDefects((current) =>
+      current.map((d) =>
+        d.id === workerTaskId
+          ? {
+              ...d,
+              status: "completed",
+            }
+          : d
+      )
+    );
+    setWorkerTaskId(null);
+    setPhotoUploaded(false);
+    setWorkerScreen("map");
+    setSuccessNotice("Auftrag wurde erfolgreich abgeschlossen.");
   }
 
   // ── HOME: DASHBOARD ─────────────────────────────────────────────────────────
@@ -981,6 +1156,21 @@ export default function App() {
                   <ChevronRight size={18} className="text-[#D1D5DB] flex-shrink-0" />
                 </div>
               ))}
+              <button
+                onClick={() => {
+                  if (isDesktop) {
+                    openAdminPanel();
+                    setCitizenTab("profile");
+                  } else {
+                    setAdminMode(true);
+                    setSuccessNotice(null);
+                  }
+                }}
+                className="w-full mt-2 h-14 bg-[#0F172A] text-white font-bold rounded-2xl flex items-center justify-center gap-2"
+              >
+                <Shield size={18} />
+                Admin Panel öffnen
+              </button>
             </div>
           ) : (
             <div className="space-y-3">
@@ -1009,8 +1199,259 @@ export default function App() {
     );
   }
 
+  function renderAdminUnavailable() {
+    return (
+      <div className="min-h-screen bg-[#F8FAFC] px-6 py-12 flex items-center justify-center">
+        <div className="max-w-md text-center">
+          <div className="w-16 h-16 bg-[#ECFDF5] rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <Smartphone size={28} className="text-[#10B981]" />
+          </div>
+          <h2 className="text-2xl font-extrabold text-[#0F172A] mb-2">Admin Panel</h2>
+          <p className="text-[#64748B] leading-relaxed">Die Admin Panel ist nur auf der Desktop-Version verfügbar.</p>
+        </div>
+      </div>
+    );
+  }
+
+  function renderAdminPanel() {
+    const visibleDefects = filteredDefects;
+    return (
+      <div className="min-h-screen bg-[#F8FAFC]">
+        <div className="flex h-screen">
+          <aside className="w-72 bg-white border-r border-[#E2E8F0] p-5 flex flex-col gap-3">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <p className="text-xs text-[#64748B]">myMetroCity</p>
+                <h2 className="text-xl font-extrabold text-[#0F172A]">Admin</h2>
+              </div>
+              <button onClick={() => { setAdminMode(false); setCitizenTab("profile"); }} className="text-[#64748B] text-sm">Zurück</button>
+            </div>
+            <button onClick={() => setAdminTab("defects")} className={`text-left px-4 py-3 rounded-2xl font-semibold ${adminTab === "defects" ? "bg-[#ECFDF5] text-[#10B981]" : "text-[#0F172A] hover:bg-slate-50"}`}>
+              1. Mängel
+            </button>
+            <button onClick={() => setAdminTab("team")} className={`text-left px-4 py-3 rounded-2xl font-semibold ${adminTab === "team" ? "bg-[#ECFDF5] text-[#10B981]" : "text-[#0F172A] hover:bg-slate-50"}`}>
+              2. Wartungsteam
+            </button>
+          </aside>
+          <main className="flex-1 p-6 overflow-auto">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <p className="text-sm text-[#64748B]">Übersicht</p>
+                <h3 className="text-2xl font-extrabold text-[#0F172A]">{adminTab === "defects" ? "Mängel" : "Wartungsteam"}</h3>
+              </div>
+              {successNotice && (
+                <div className="bg-[#ECFDF5] text-[#10B981] px-4 py-2 rounded-xl text-sm font-semibold">{successNotice}</div>
+              )}
+            </div>
+            {adminTab === "defects" ? (
+              <div className="grid grid-cols-[340px_1fr] gap-6">
+                <section className="bg-white rounded-3xl border border-[#E2E8F0] p-4">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Search size={18} className="text-[#64748B]" />
+                    <input value={adminSearch} onChange={(e) => setAdminSearch(e.target.value)} placeholder="Suche nach Ort oder Kategorie" className="w-full bg-transparent outline-none text-sm text-[#0F172A] placeholder:text-[#94A3B8]" />
+                  </div>
+                  <div className="flex flex-wrap gap-2 mb-4">
+                    {(["all", "new", "approved", "pending", "in-progress", "rejected", "completed"] as const).map((filter) => (
+                      <button key={filter} onClick={() => setAdminFilter(filter)} className={`px-3 py-1.5 rounded-full text-xs font-semibold ${adminFilter === filter ? "bg-[#0F172A] text-white" : "bg-[#F8FAFC] text-[#64748B]"}`}>
+                        {filter === "all" ? "Alle" : filter}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="space-y-3 max-h-[70vh] overflow-auto pr-1">
+                    {visibleDefects.length === 0 ? (
+                      <div className="rounded-2xl border border-dashed border-[#CBD5E1] bg-[#F8FAFC] p-6 text-center text-sm text-[#64748B]">
+                        Keine Meldungen passen zu den aktuellen Filtern.
+                      </div>
+                    ) : (
+                      visibleDefects.map((d) => (
+                        <button key={d.id} onClick={() => setSelectedAdminDefectId(d.id)} className={`w-full text-left p-4 rounded-2xl border transition-all ${selectedAdminDefectId === d.id ? "border-[#10B981] bg-[#ECFDF5] shadow-sm" : "border-[#E2E8F0] bg-[#F8FAFC] hover:border-[#CBD5E1]"}`}>
+                          <div className="flex items-center justify-between gap-2 mb-2">
+                            <span className="font-bold text-[#0F172A]">{d.label}</span>
+                            <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${getStatusPillClass(d.status)}`}>{getStatusLabel(d.status)}</span>
+                          </div>
+                          <div className="text-sm text-[#64748B]">{d.address}</div>
+                          <div className="text-xs text-[#94A3B8] mt-1">{d.time} · {d.category}</div>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </section>
+                <section className="bg-white rounded-3xl border border-[#E2E8F0] p-6 relative overflow-hidden">
+                  <div className="grid grid-cols-4 gap-3 mb-6">
+                    {[
+                      { label: "Neu", value: adminCounts.new, tone: "bg-red-50 text-red-600" },
+                      { label: "Angenommen", value: adminCounts.approved, tone: "bg-blue-50 text-blue-600" },
+                      { label: "Wartung", value: adminCounts["in-progress"], tone: "bg-[#ECFDF5] text-[#10B981]" },
+                      { label: "Abgelehnt", value: adminCounts.rejected, tone: "bg-gray-50 text-gray-600" },
+                    ].map((item) => (
+                      <div key={item.label} className="rounded-2xl bg-[#F8FAFC] p-4">
+                        <div className={`text-xs font-bold px-2 py-1 rounded-full inline-flex ${item.tone}`}>{item.label}</div>
+                        <div className="text-3xl font-extrabold text-[#0F172A] mt-2">{item.value}</div>
+                      </div>
+                    ))}
+                  </div>
+                  {selectedAdminDefect ? (
+                    <div className="grid grid-cols-[1.2fr_0.8fr] gap-6">
+                      <div>
+                        <div className="flex items-center gap-2 mb-3">
+                          <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${getStatusPillClass(selectedAdminDefect.status)}`}>{getStatusLabel(selectedAdminDefect.status)}</span>
+                          <span className="text-xs text-[#64748B]">#{selectedAdminDefect.id}</span>
+                        </div>
+                        <h4 className="text-2xl font-extrabold text-[#0F172A] mb-2">{selectedAdminDefect.label}</h4>
+                        <p className="text-[#64748B] mb-4">{selectedAdminDefect.address}</p>
+                        <div className="bg-[#F8FAFC] rounded-2xl p-4 mb-4">
+                          <div className="text-sm text-[#64748B] mb-2">Beschreibung</div>
+                          <p className="text-[#0F172A] leading-relaxed">{selectedAdminDefect.detail}</p>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="bg-white border border-[#E2E8F0] rounded-2xl p-3"><div className="text-xs text-[#64748B]">Kategorie</div><div className="font-semibold text-[#0F172A]">{selectedAdminDefect.category}</div></div>
+                          <div className="bg-white border border-[#E2E8F0] rounded-2xl p-3"><div className="text-xs text-[#64748B]">Priorität</div><div className="font-semibold text-[#0F172A]">{selectedAdminDefect.priority}</div></div>
+                          <div className="bg-white border border-[#E2E8F0] rounded-2xl p-3"><div className="text-xs text-[#64748B]">Meldender</div><div className="font-semibold text-[#0F172A]">{selectedAdminDefect.reporter}</div></div>
+                          <div className="bg-white border border-[#E2E8F0] rounded-2xl p-3"><div className="text-xs text-[#64748B]">Team</div><div className="font-semibold text-[#0F172A]">{selectedAdminDefect.team}</div></div>
+                        </div>
+                      </div>
+                      <div className="space-y-3">
+                        <button onClick={() => updateDefectStatus(selectedAdminDefect.id, "pending")} className="w-full h-14 bg-[#10B981] text-white font-bold rounded-2xl">Annehmen</button>
+                        <button onClick={() => { setAdminTab("team"); setAdminView("map"); setSelectedAdminDefectId(selectedAdminDefect.id); setSuccessNotice(null); }} className="w-full h-14 bg-[#0F172A] text-white font-bold rounded-2xl">Auf Karte anzeigen</button>
+                        {selectedAdminDefect.status === "in-progress" && (
+                          <button onClick={() => updateDefectStatus(selectedAdminDefect.id, "completed")} className="w-full h-14 bg-[#0F172A] text-white font-bold rounded-2xl">Als erledigt markieren</button>
+                        )}
+                        <div className="bg-[#F8FAFC] rounded-2xl p-4">
+                          <label className="block text-xs text-[#64748B] mb-2">Ablehnungsgrund</label>
+                          <select value={rejectionReason} onChange={(e) => setRejectionReason(e.target.value)} className="w-full rounded-xl border border-[#D1D5DB] px-3 py-2 text-sm text-[#0F172A] bg-white">
+                            {REJECTION_REASONS.map((reason) => <option key={reason} value={reason}>{reason}</option>)}
+                          </select>
+                        </div>
+                        <button onClick={() => updateDefectStatus(selectedAdminDefect.id, "rejected", rejectionReason)} className="w-full h-14 bg-white border border-[#D1D5DB] text-[#0F172A] font-bold rounded-2xl">Ablehnen</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="h-full flex items-center justify-center text-[#64748B]">Bitte wählen Sie eine Meldung aus.</div>
+                  )}
+                </section>
+              </div>
+            ) : (
+              <div className="grid grid-cols-[320px_1fr_280px] gap-6 h-[80vh]">
+                <section className="bg-white rounded-3xl border border-[#E2E8F0] p-4 overflow-auto">
+                  <div className="flex items-center justify-between mb-4">
+                    <h4 className="font-bold text-[#0F172A]">Aufträge</h4>
+                    <span className="text-xs text-[#64748B]">{defects.filter((d) => d.status === "pending" || d.status === "in-progress").length} aktiv</span>
+                  </div>
+                  <div className="space-y-3">
+                    {defects.filter((d) => d.status === "pending" || d.status === "in-progress").map((d) => (
+                      <button key={d.id} onClick={() => setSelectedAdminDefectId(d.id)} className={`w-full text-left p-3 rounded-2xl border ${selectedAdminDefectId === d.id ? "border-[#10B981] bg-[#ECFDF5]" : "border-[#E2E8F0] bg-[#F8FAFC]"}`}>
+                        <div className="font-semibold text-[#0F172A] text-sm">{d.label}</div>
+                        <div className="text-xs text-[#64748B] mt-1">{d.address}</div>
+                        <div className="text-xs text-[#10B981] font-semibold mt-2">{d.status === "pending" ? "Wartet auf Team" : "In Bearbeitung"}</div>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+                <section className="bg-white rounded-3xl border border-[#E2E8F0] p-4 overflow-auto">
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <p className="text-xs text-[#64748B]">Ansicht</p>
+                      <h4 className="font-bold text-[#0F172A]">{adminView === "map" ? "Karte" : "Tabelle"}</h4>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => setAdminView("map")} className={`px-3 py-2 rounded-xl text-sm font-semibold ${adminView === "map" ? "bg-[#0F172A] text-white" : "bg-[#F8FAFC] text-[#64748B]"}`}>Map</button>
+                      <button onClick={() => setAdminView("table")} className={`px-3 py-2 rounded-xl text-sm font-semibold ${adminView === "table" ? "bg-[#0F172A] text-white" : "bg-[#F8FAFC] text-[#64748B]"}`}>Tabelle</button>
+                    </div>
+                  </div>
+                  {adminView === "map" ? (
+                    <div className="relative h-[68vh] rounded-3xl overflow-hidden bg-[#E2E8F0]">
+                      <svg viewBox="0 0 600 500" className="absolute inset-0 w-full h-full">
+                        <rect width="600" height="500" fill="#E2E8F0" />
+                        <rect x="0" y="120" width="600" height="30" fill="#F8FAFC" />
+                        <rect x="0" y="260" width="600" height="30" fill="#F8FAFC" />
+                        <rect x="0" y="400" width="600" height="30" fill="#F8FAFC" />
+                        <rect x="120" y="0" width="30" height="500" fill="#F8FAFC" />
+                        <rect x="300" y="0" width="30" height="500" fill="#F8FAFC" />
+                        <rect x="480" y="0" width="30" height="500" fill="#F8FAFC" />
+                      </svg>
+                      {defects.filter((d) => d.status !== "completed" && d.status !== "approved" && d.status !== "rejected").map((d) => (
+                        <button key={d.id} onClick={() => setSelectedAdminDefectId(d.id)} className="absolute" style={{ left: d.x * 1.7, top: d.y * 1.2 }}>
+                          <div className={`w-5 h-5 rounded-full border-2 border-white ${d.status === "new" ? "bg-red-500" : "bg-yellow-500"}`} />
+                        </button>
+                      ))}
+                      {selectedAdminDefect && (
+                        <div className="absolute inset-x-4 bottom-4 bg-white rounded-3xl border border-[#E2E8F0] shadow-xl p-4">
+                          <div className="flex items-center justify-between gap-3 mb-3">
+                            <div>
+                              <div className="text-xs text-[#64748B]">Ausgewählt</div>
+                              <div className="font-bold text-[#0F172A]">{selectedAdminDefect.label}</div>
+                            </div>
+                            <button onClick={() => setSelectedAdminDefectId(null)} className="text-sm text-[#64748B]">Schließen</button>
+                          </div>
+                          <p className="text-sm text-[#64748B] mb-3">{selectedAdminDefect.address}</p>
+                          <div className="flex gap-2">
+                            {['Team 1', 'Team 2', 'Team 3'].map((team) => (
+                              <button
+                                key={team}
+                                onClick={() => {
+                                  setDefects((current) =>
+                                    current.map((d) =>
+                                      d.id === selectedAdminDefect.id
+                                        ? { ...d, team, status: "in-progress" }
+                                        : d
+                                    )
+                                  );
+                                  setSuccessNotice(`Mangel wurde ${team} zugewiesen.`);
+                                }}
+                                className="flex-1 px-3 py-2 rounded-xl bg-[#F8FAFC] text-[#0F172A] text-sm font-semibold"
+                              >
+                                {team}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="overflow-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="text-left text-[#64748B]">
+                            <th className="pb-2">Mangel</th>
+                            <th className="pb-2">Ort</th>
+                            <th className="pb-2">Status</th>
+                            <th className="pb-2">Team</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {defects.filter((d) => d.status === "pending" || d.status === "in-progress").map((d) => (
+                            <tr key={d.id} className="border-t border-[#E2E8F0]">
+                              <td className="py-3 font-semibold text-[#0F172A]">{d.label}</td>
+                              <td className="py-3 text-[#64748B]">{d.address}</td>
+                              <td className="py-3"><span className={`px-2 py-1 rounded-full text-xs font-semibold ${d.status === "pending" ? "bg-yellow-100 text-yellow-700" : "bg-[#ECFDF5] text-[#10B981]"}`}>{d.status === "pending" ? "wartet" : "in Arbeit"}</span></td>
+                              <td className="py-3 text-[#64748B]">{d.team}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </section>
+                <aside className="bg-white rounded-3xl border border-[#E2E8F0] p-4 overflow-auto">
+                  <h4 className="font-bold text-[#0F172A] mb-4">Filter</h4>
+                  <div className="space-y-2">
+                    {(["all", "pending", "in-progress", "completed"] as const).map((filter) => (
+                      <button key={filter} onClick={() => setAdminFilter(filter)} className={`w-full text-left px-3 py-2 rounded-xl text-sm font-semibold ${adminFilter === filter ? "bg-[#0F172A] text-white" : "bg-[#F8FAFC] text-[#64748B]"}`}>{filter === "all" ? "Alle" : filter}</button>
+                    ))}
+                  </div>
+                </aside>
+              </div>
+            )}
+          </main>
+        </div>
+      </div>
+    );
+  }
+
   // ── MAINTENANCE: MAP ─────────────────────────────────────────────────────────
   function renderWorkerMap() {
+    const availableTasks = defects.filter((d) => d.status === "new" || d.status === "pending" || d.status === "approved");
+    const hasActiveTask = workerTaskId !== null;
     return (
       <div className="relative" style={{ height: "calc(100dvh - 80px)" }}>
         <svg viewBox="0 0 390 800" className="absolute inset-0">
@@ -1032,10 +1473,18 @@ export default function App() {
           <text x="4" y="511" fill="#94A3B8" fontSize="9">Parkweg</text>
           <text x="4" y="676" fill="#94A3B8" fontSize="9">Kirchgasse</text>
         </svg>
-        {DEFECTS.map((d) => (
-          <button key={d.id} onClick={() => { setSelectedPinId(d.id); setWorkerScreen("jobDetail"); }}
-            className="absolute flex flex-col items-center transition-transform active:scale-125"
-            style={{ left: d.x - 14, top: d.y - 38 }}>
+        {availableTasks.map((d) => (
+          <button
+            key={d.id}
+            onClick={() => {
+              if (hasActiveTask && workerTaskId !== d.id) return;
+              setSelectedPinId(d.id);
+              setWorkerScreen("jobDetail");
+            }}
+            className={`absolute flex flex-col items-center transition-transform ${hasActiveTask && workerTaskId !== d.id ? "opacity-40" : "active:scale-125"}`}
+            style={{ left: d.x - 14, top: d.y - 38 }}
+            disabled={hasActiveTask && workerTaskId !== d.id}
+          >
             <div className={`w-7 h-7 rounded-full border-[2.5px] border-white shadow-lg flex items-center justify-center ${d.status === "new" ? "bg-red-500" : "bg-yellow-500"}`}>
               <AlertTriangle size={13} className="text-white" />
             </div>
@@ -1049,7 +1498,7 @@ export default function App() {
             </div>
             <div className="flex-1">
               <div className="font-bold text-[#0F172A] text-sm">Wartungsteam · myMetroCity</div>
-              <div className="text-xs text-[#64748B]">3 offene · 2 in Bearbeitung</div>
+              <div className="text-xs text-[#64748B]">{openWorkerTasks} offen · {activeWorkerAssignments} in Bearbeitung</div>
             </div>
             <div className="relative">
               <Bell size={22} className="text-[#0F172A]" />
@@ -1057,14 +1506,25 @@ export default function App() {
             </div>
           </div>
         </div>
-        <div className="absolute bottom-6 left-3 bg-white rounded-xl p-3 shadow-lg border border-[#D1D5DB]">
-          <div className="text-xs text-[#64748B]">Offene Aufträge</div>
-          <div className="text-2xl font-extrabold text-[#0F172A]">3</div>
-          <div className="text-xs text-red-500 font-bold">● Dringend</div>
-        </div>
-        <div className="absolute bottom-6 right-3 bg-white rounded-xl p-3 shadow-lg border border-[#D1D5DB]">
-          <div className="flex items-center gap-2 mb-1.5"><div className="w-3.5 h-3.5 bg-red-500 rounded-full flex-shrink-0" /><span className="text-xs font-semibold text-[#0F172A]">Neuer Auftrag</span></div>
-          <div className="flex items-center gap-2"><div className="w-3.5 h-3.5 bg-yellow-500 rounded-full flex-shrink-0" /><span className="text-xs font-semibold text-[#0F172A]">In Bearbeitung</span></div>
+        <div className="absolute bottom-6 left-3 right-3">
+          {workerActiveTask ? (
+            <div className="bg-[#0F172A] rounded-2xl p-4 shadow-lg text-white">
+              <div className="text-[10px] uppercase tracking-wide text-[#94A3B8]">Aktive Aufgabe</div>
+              <div className="font-bold text-sm mt-1">{workerActiveTask.label}</div>
+              <div className="text-xs text-[#CBD5E1] mt-0.5">{workerActiveTask.address}</div>
+              <button
+                onClick={() => setWorkerScreen("jobComplete")}
+                className="mt-3 w-full h-12 rounded-xl bg-[#10B981] text-white font-semibold text-sm"
+              >
+                Aufgabe abschließen
+              </button>
+            </div>
+          ) : (
+            <div className="bg-white rounded-2xl p-3 shadow-lg border border-[#D1D5DB]">
+              <div className="text-xs text-[#64748B]">Aktive Aufgabe</div>
+              <div className="text-sm font-semibold text-[#0F172A]">Kein Auftrag aktuell angenommen</div>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -1072,7 +1532,8 @@ export default function App() {
 
   // ── MAINTENANCE: JOB DETAIL ──────────────────────────────────────────────────
   function renderWorkerJobDetail() {
-    const d = DEFECTS.find((def) => def.id === selectedPinId);
+    const d = defects.find((def) => def.id === selectedPinId);
+    const canAccept = workerTaskId === null || workerTaskId === d?.id;
     if (!d) return null;
     return (
       <div className="pb-6">
@@ -1093,7 +1554,10 @@ export default function App() {
             <circle cx="151" cy="148" r="10" fill="#EF4444"/>
             <text x="151" y="153" fill="white" fontSize="12" textAnchor="middle" fontWeight="bold">!</text>
           </svg>
-          <button onClick={() => setWorkerScreen("map")} className="absolute top-3 left-3 w-10 h-10 bg-white rounded-xl shadow-md flex items-center justify-center">
+          <button
+            onClick={() => setWorkerScreen("map")}
+            className="absolute top-3 left-3 w-10 h-10 bg-white rounded-xl shadow-md flex items-center justify-center"
+          >
             <ArrowLeft size={20} className="text-[#0F172A]" />
           </button>
           <div className="absolute bottom-2 left-3 right-3 bg-white/90 backdrop-blur-sm rounded-xl px-3 py-2 flex items-center gap-2">
@@ -1127,9 +1591,22 @@ export default function App() {
               </div>
             ))}
           </div>
-          <button onClick={() => setWorkerScreen("jobComplete")} className="w-full h-16 bg-[#10B981] text-white font-bold text-lg rounded-2xl shadow-lg">
-            Auftrag annehmen
+          <button
+            onClick={() => {
+              if (workerTaskId === d.id) {
+                setWorkerScreen("jobComplete");
+                return;
+              }
+              if (workerTaskId !== null && workerTaskId !== d.id) return;
+              acceptWorkerTask(d.id);
+            }}
+            className={`w-full h-16 font-bold text-lg rounded-2xl shadow-lg ${workerTaskId === d.id ? "bg-[#10B981] text-white" : canAccept ? "bg-[#10B981] text-white" : "bg-[#D1D5DB] text-[#94A3B8] cursor-not-allowed"}`}
+          >
+            {workerTaskId === d.id ? "Auftrag abschließen" : "Auftrag annehmen"}
           </button>
+          {workerTaskId !== null && workerTaskId !== d.id && (
+            <p className="mt-3 text-center text-xs text-[#64748B]">Du kannst nur ein aktives Aufgab gleichzeitig übernehmen.</p>
+          )}
         </div>
       </div>
     );
@@ -1137,7 +1614,7 @@ export default function App() {
 
   // ── MAINTENANCE: JOB COMPLETE ────────────────────────────────────────────────
   function renderWorkerJobComplete() {
-    const d = DEFECTS.find((def) => def.id === selectedPinId);
+    const d = defects.find((def) => def.id === selectedPinId);
     return (
       <div className="px-5 pt-3 pb-8">
         <button onClick={() => setWorkerScreen("jobDetail")} className="flex items-center gap-2 text-[#64748B] mb-4 h-10">
@@ -1174,8 +1651,11 @@ export default function App() {
           <label className="block text-sm font-bold text-[#0F172A] mb-2">Anmerkungen (optional)</label>
           <textarea rows={3} placeholder="z.B. Ersatzteil eingebaut, Strassensperrung aufgehoben..." className="w-full px-4 py-3 rounded-xl border-2 border-[#D1D5DB] bg-white text-[#0F172A] text-base focus:border-[#10B981] focus:outline-none resize-none"/>
         </div>
-        <button disabled={!photoUploaded}
-          className={`w-full h-16 font-bold text-xl rounded-2xl transition-all ${photoUploaded ? "bg-[#10B981] text-white shadow-lg" : "bg-[#D1D5DB] text-[#94A3B8] cursor-not-allowed"}`}>
+        <button
+          disabled={!photoUploaded}
+          onClick={completeWorkerTask}
+          className={`w-full h-16 font-bold text-xl rounded-2xl transition-all ${photoUploaded ? "bg-[#10B981] text-white shadow-lg" : "bg-[#D1D5DB] text-[#94A3B8] cursor-not-allowed"}`}
+        >
           ✓ Erledigt
         </button>
         {!photoUploaded && <p className="text-center text-xs text-[#64748B] mt-2">Foto-Nachweis ist zwingend erforderlich</p>}
@@ -1185,6 +1665,10 @@ export default function App() {
 
   // ─── Routing ──────────────────────────────────────────────────────────────────
   function renderContent() {
+    if (adminMode) {
+      if (isDesktop) return renderAdminPanel();
+      return renderAdminUnavailable();
+    }
     if (citizenTab === "home") {
       if (homeScreen === "ticketDetail") return renderTicketDetail();
       if (homeScreen === "allTickets") return renderAllTickets();
@@ -1222,6 +1706,7 @@ export default function App() {
     { id: "maintenance" as CitizenTab, icon: <Wrench size={22} />, label: "Wartung", locked: true },
     { id: "profile" as CitizenTab, icon: <User size={22} />, label: "Profil" },
   ];
+  const shouldShowBottomNav = !adminMode;
 
   return (
     <div
@@ -1234,8 +1719,8 @@ export default function App() {
 
         {/* Content */}
         <div
-          className={`${citizenTab === 'maintenance' && workerScreen === 'map' ?  'overflow-y-hidden' : 'overflow-y-auto'} overscroll-contain pb-12`}
-          style={{ height: "calc(100dvh - 80px)", scrollbarWidth: "none" }}
+          className={`${citizenTab === 'maintenance' && workerScreen === 'map' ?  'overflow-y-hidden' : 'overflow-y-auto'} overscroll-contain ${shouldShowBottomNav ? 'pb-12' : ''}`}
+          style={{ height: shouldShowBottomNav ? "calc(100dvh - 80px)" : "100dvh", scrollbarWidth: "none" }}
         >
           {renderContent()}
         </div>
@@ -1268,32 +1753,34 @@ export default function App() {
         )}
 
         {/* Bottom Navigation — 5 tabs */}
-        <div className="absolute left-0 right-0 bg-white border-t border-[#D1D5DB] flex items-start pt-3 px-2" style={{ height: "80px", bottom: 0}}>
-          {navItems.map((item) => {
-            const active = citizenTab === item.id;
-            return (
-              <button
-                key={item.id}
-                onClick={() => {
-                  goToTab(item.id);
-                  if (item.id === "maintenance") setWorkerScreen("map");
-                }}
-                className={`flex-1 flex flex-col items-center gap-0.5 transition-colors relative ${active ? "text-[#10B981]" : "text-[#94A3B8]"}`}
-              >
-                <div className="relative">
-                  {item.icon}
-                  {"locked" in item && item.locked && (
-                    <div className="absolute -top-1 -right-2 w-4 h-4 bg-[#0F172A] rounded-full flex items-center justify-center">
-                      <Lock size={8} className="text-white" />
-                    </div>
-                  )}
-                </div>
-                <span className="text-[9px] font-bold leading-tight text-center">{item.label}</span>
-                {active && <div className="w-1 h-1 bg-[#10B981] rounded-full" />}
-              </button>
-            );
-          })}
-        </div>
+        {shouldShowBottomNav && (
+          <div className="absolute left-0 right-0 bg-white border-t border-[#D1D5DB] flex items-start pt-3 px-2" style={{ height: "80px", bottom: 0}}>
+            {navItems.map((item) => {
+              const active = citizenTab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => {
+                    goToTab(item.id);
+                    if (item.id === "maintenance") setWorkerScreen("map");
+                  }}
+                  className={`flex-1 flex flex-col items-center gap-0.5 transition-colors relative ${active ? "text-[#10B981]" : "text-[#94A3B8]"}`}
+                >
+                  <div className="relative">
+                    {item.icon}
+                    {"locked" in item && item.locked && (
+                      <div className="absolute -top-1 -right-2 w-4 h-4 bg-[#0F172A] rounded-full flex items-center justify-center">
+                        <Lock size={8} className="text-white" />
+                      </div>
+                    )}
+                  </div>
+                  <span className="text-[9px] font-bold leading-tight text-center">{item.label}</span>
+                  {active && <div className="w-1 h-1 bg-[#10B981] rounded-full" />}
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {/* Home indicator */}
       </div>
