@@ -1208,6 +1208,16 @@ export default function App() {
           </div>
           <h2 className="text-2xl font-extrabold text-[#0F172A] mb-2">Admin Panel</h2>
           <p className="text-[#64748B] leading-relaxed">Die Admin Panel ist nur auf der Desktop-Version verfügbar.</p>
+          <button
+            onClick={() => {
+              setAdminMode(false);
+              setCitizenTab("home");
+              setHomeScreen("dashboard");
+            }}
+            className="mt-6 w-full h-14 bg-[#0F172A] text-white font-bold rounded-2xl"
+          >
+            Zurück zu Home
+          </button>
         </div>
       </div>
     );
