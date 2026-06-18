@@ -35,7 +35,7 @@ export default defineConfig({
         background_color: '#F8FAFC',
         display: 'standalone',
         orientation: 'portrait',
-        start_url: '/',
+        start_url: '/bbc-mzMetroCity',
         icons: [
           {
             src: '/pwa-192.png',
