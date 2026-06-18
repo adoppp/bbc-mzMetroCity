@@ -1057,12 +1057,12 @@ export default function App() {
             </div>
           </div>
         </div>
-        <div className="absolute bottom-5 left-3 bg-white rounded-xl p-3 shadow-lg border border-[#D1D5DB]">
+        <div className="absolute bottom-22 left-3 bg-white rounded-xl p-3 shadow-lg border border-[#D1D5DB]">
           <div className="text-xs text-[#64748B]">Offene Aufträge</div>
           <div className="text-2xl font-extrabold text-[#0F172A]">3</div>
           <div className="text-xs text-red-500 font-bold">● Dringend</div>
         </div>
-        <div className="absolute bottom-5 right-3 bg-white rounded-xl p-3 shadow-lg border border-[#D1D5DB]">
+        <div className="absolute bottom-22 right-3 bg-white rounded-xl p-3 shadow-lg border border-[#D1D5DB]">
           <div className="flex items-center gap-2 mb-1.5"><div className="w-3.5 h-3.5 bg-red-500 rounded-full flex-shrink-0" /><span className="text-xs font-semibold text-[#0F172A]">Neuer Auftrag</span></div>
           <div className="flex items-center gap-2"><div className="w-3.5 h-3.5 bg-yellow-500 rounded-full flex-shrink-0" /><span className="text-xs font-semibold text-[#0F172A]">In Bearbeitung</span></div>
         </div>
@@ -1229,12 +1229,12 @@ export default function App() {
       {/* Phone Frame */}
       <div
         className="relative bg-[#F8FAFC] overflow-hidden"
-        style={{ height: "100dvh",  margin: '0 auto' }}
+        style={{ height: "100vh",  margin: '0 auto' }}
       >
 
         {/* Content */}
         <div
-          className="overflow-y-auto overscroll-contain pb-16"
+          className={`${citizenTab === 'maintenance' && workerScreen === 'map' ?  'overflow-y-hidden' : 'overflow-y-auto'} overscroll-contain pb-12`}
           style={{ height: "calc(844px - 48px - 80px)", scrollbarWidth: "none" }}
         >
           {renderContent()}
@@ -1268,7 +1268,7 @@ export default function App() {
         )}
 
         {/* Bottom Navigation — 5 tabs */}
-        <div className="absolute bottom-0 left-0 right-0 bg-white border-t border-[#D1D5DB] flex items-start pt-3 px-2" style={{ height: "80px" }}>
+        <div className="absolute left-0 right-0 bg-white border-t border-[#D1D5DB] flex items-start pt-3 px-2" style={{ height: "80px", bottom: '80px'}}>
           {navItems.map((item) => {
             const active = citizenTab === item.id;
             return (
