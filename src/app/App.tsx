@@ -1235,7 +1235,7 @@ export default function App() {
         {/* Content */}
         <div
           className={`${citizenTab === 'maintenance' && workerScreen === 'map' ?  'overflow-y-hidden' : 'overflow-y-auto'} overscroll-contain pb-12`}
-          style={{ height: "calc(844px - 48px - 80px)", scrollbarWidth: "none" }}
+          style={{ height: "calc(100dvh - 80px)", scrollbarWidth: "none" }}
         >
           {renderContent()}
         </div>
